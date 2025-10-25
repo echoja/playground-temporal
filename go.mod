@@ -5,6 +5,7 @@ go 1.25.3
 require (
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/google/uuid v1.6.0
+	go.temporal.io/api v1.53.0
 	go.temporal.io/sdk v1.37.0
 	modernc.org/sqlite v1.39.1
 )
@@ -25,7 +26,6 @@ require (
 	github.com/robfig/cron v1.2.0 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/stretchr/testify v1.10.0 // indirect
-	go.temporal.io/api v1.53.0 // indirect
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b // indirect
 	golang.org/x/net v0.39.0 // indirect
 	golang.org/x/sync v0.16.0 // indirect

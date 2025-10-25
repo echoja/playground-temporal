@@ -3,14 +3,14 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"time"
 
 	"example.com/temporal-go/internal/builder"
+	"example.com/temporal-go/internal/logging"
 	"example.com/temporal-go/internal/sqliteutil"
 )
 
@@ -22,20 +22,25 @@ func main() {
 	flag.Parse()
 
 	ctx := context.Background()
+	logger := logging.New()
+
 	db, err := sqliteutil.Open(*dbPath)
 	if err != nil {
-		log.Fatalf("open builder db: %v", err)
+		logger.Error("open builder db failed", "error", err)
+		os.Exit(1)
 	}
 	defer db.Close()
 
 	store := builder.NewStore(db)
 	if err := store.Init(ctx); err != nil {
-		log.Fatalf("init builder schema: %v", err)
+		logger.Error("init builder schema failed", "error", err)
+		os.Exit(1)
 	}
 
+	serverLogger := logger.With("component", "builder.http")
 	server := &http.Server{
 		Addr:    *addr,
-		Handler: builder.NewServer(store).Router(),
+		Handler: builder.NewServer(store, serverLogger).Router(),
 	}
 
 	// The builder service is a long running HTTP server; add a short comment describing the workflow for clarity.
@@ -44,16 +49,16 @@ func main() {
 	// 3. Serve paginated data to the worker so sync jobs can exercise pagination logic.
 
 	go func() {
-		log.Printf("builder API listening on %s (db: %s)", *addr, *dbPath)
+		serverLogger.Info("builder API listening", "addr", *addr, "db", *dbPath)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("builder server error: %v", err)
+			serverLogger.Error("builder server error", "error", err)
 		}
 	}()
 
-	waitForShutdown(server)
+	waitForShutdown(serverLogger, server)
 }
 
-func waitForShutdown(server *http.Server) {
+func waitForShutdown(logger *slog.Logger, server *http.Server) {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt)
 	<-sigCh
@@ -62,6 +67,8 @@ func waitForShutdown(server *http.Server) {
 	defer cancel()
 
 	if err := server.Shutdown(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "graceful shutdown failed: %v\n", err)
+		logger.Error("graceful shutdown failed", "error", err)
+		return
 	}
+	logger.Info("builder server stopped")
 }

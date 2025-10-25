@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -23,6 +23,8 @@ import (
 type Server struct {
 	store         *Store
 	builderClient *BuilderClient
+	orchestrator  SyncOrchestrator
+	logger        *slog.Logger
 }
 
 const (
@@ -30,11 +32,41 @@ const (
 	autoSyncPerSiteTimeout = 2 * time.Minute
 )
 
+// SyncOrchestrator abstracts how sync operations are executed. For production we
+// back this with a Temporal workflow runner so all syncs flow through the same pipeline.
+type SyncOrchestrator interface {
+	RunSync(ctx context.Context, input SyncWorkflowInput) (SyncWorkflowResult, error)
+	RunSyncAsync(ctx context.Context, input SyncWorkflowInput) (string, error)
+}
+
+// SyncWorkflowInput carries parameters into the Temporal workflow.
+type SyncWorkflowInput struct {
+	SiteID        string     `json:"site_id"`
+	Start         *time.Time `json:"start,omitempty"`
+	End           *time.Time `json:"end,omitempty"`
+	Page          int        `json:"page"`
+	IncludeUsers  bool       `json:"include_users"`
+	IncludeOrders bool       `json:"include_orders"`
+	Reason        string     `json:"reason"`
+}
+
+// SyncWorkflowResult captures the combined workflow output.
+type SyncWorkflowResult struct {
+	WorkflowID  string       `json:"workflow_id"`
+	RunID       string       `json:"run_id"`
+	Users       *SyncSummary `json:"users,omitempty"`
+	Orders      *SyncSummary `json:"orders,omitempty"`
+	StartedAt   time.Time    `json:"started_at"`
+	CompletedAt time.Time    `json:"completed_at"`
+}
+
 // NewServer creates a worker server with the required collaborators wired in.
-func NewServer(store *Store, client *BuilderClient) *Server {
+func NewServer(store *Store, client *BuilderClient, orchestrator SyncOrchestrator, logger *slog.Logger) *Server {
 	return &Server{
 		store:         store,
 		builderClient: client,
+		orchestrator:  orchestrator,
+		logger:        logger,
 	}
 }
 
@@ -107,6 +139,8 @@ func (s *Server) handleRegisterSite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.logger.Info("worker site registered", "site_id", record.SiteID, "builder_base_url", record.BuilderBaseURL)
+
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"site_id":          record.SiteID,
 		"builder_base_url": record.BuilderBaseURL,
@@ -134,6 +168,7 @@ func (s *Server) handleUnregisterSite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+	s.logger.Info("worker site unregistered", "site_id", siteID)
 }
 
 func (s *Server) handleListSites(w http.ResponseWriter, r *http.Request) {
@@ -146,11 +181,89 @@ func (s *Server) handleListSites(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSyncUsers(w http.ResponseWriter, r *http.Request) {
-	s.syncEntities(w, r, s.fetchUsersPage)
+	siteID := chi.URLParam(r, "siteID")
+	site, err := s.store.GetSite(r.Context(), siteID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "site not registered")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "load site: %v", err)
+		return
+	}
+
+	page := parseIntDefault(r.URL.Query().Get("page"), 1)
+	start, end, err := parseDateRange(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	result, err := s.runSyncWorkflow(r.Context(), site, true, false, page, start, end, "api-sync-users")
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "sync via workflow: %v", err)
+		return
+	}
+
+	payload := map[string]any{
+		"site_id":      site.SiteID,
+		"workflow_id":  result.WorkflowID,
+		"run_id":       result.RunID,
+		"started_at":   result.StartedAt.Format(time.RFC3339Nano),
+		"completed_at": result.CompletedAt.Format(time.RFC3339Nano),
+		"filters": map[string]any{
+			"start": formatTimePtr(start),
+			"end":   formatTimePtr(end),
+			"page":  page,
+		},
+	}
+	if result.Users != nil {
+		payload["synced"] = result.Users
+	}
+	writeJSON(w, http.StatusOK, payload)
 }
 
 func (s *Server) handleSyncOrders(w http.ResponseWriter, r *http.Request) {
-	s.syncEntities(w, r, s.fetchOrdersPage)
+	siteID := chi.URLParam(r, "siteID")
+	site, err := s.store.GetSite(r.Context(), siteID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "site not registered")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "load site: %v", err)
+		return
+	}
+
+	page := parseIntDefault(r.URL.Query().Get("page"), 1)
+	start, end, err := parseDateRange(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	result, err := s.runSyncWorkflow(r.Context(), site, false, true, page, start, end, "api-sync-orders")
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "sync via workflow: %v", err)
+		return
+	}
+
+	payload := map[string]any{
+		"site_id":      site.SiteID,
+		"workflow_id":  result.WorkflowID,
+		"run_id":       result.RunID,
+		"started_at":   result.StartedAt.Format(time.RFC3339Nano),
+		"completed_at": result.CompletedAt.Format(time.RFC3339Nano),
+		"filters": map[string]any{
+			"start": formatTimePtr(start),
+			"end":   formatTimePtr(end),
+			"page":  page,
+		},
+	}
+	if result.Orders != nil {
+		payload["synced"] = result.Orders
+	}
+	writeJSON(w, http.StatusOK, payload)
 }
 
 type pagedFetcher func(ctx context.Context, site RegisteredSite, page int, start, end *time.Time) (pagedResult, error)
@@ -231,6 +344,28 @@ func (s *Server) syncSite(ctx context.Context, site RegisteredSite, page int, st
 	return summary, nil
 }
 
+func (s *Server) runSyncWorkflow(ctx context.Context, site RegisteredSite, includeUsers, includeOrders bool, page int, start, end *time.Time, reason string) (SyncWorkflowResult, error) {
+	if s.orchestrator == nil {
+		return SyncWorkflowResult{}, errors.New("sync orchestrator not configured")
+	}
+	input := SyncWorkflowInput{
+		SiteID:        site.SiteID,
+		Start:         start,
+		End:           end,
+		Page:          page,
+		IncludeUsers:  includeUsers,
+		IncludeOrders: includeOrders,
+		Reason:        reason,
+	}
+	result, err := s.orchestrator.RunSync(ctx, input)
+	if err != nil {
+		s.logger.Error("workflow sync failed", "site_id", site.SiteID, "reason", reason, "error", err)
+		return result, err
+	}
+	s.logger.Info("workflow sync completed", "site_id", site.SiteID, "reason", reason, "workflow_id", result.WorkflowID, "run_id", result.RunID, "include_users", includeUsers, "include_orders", includeOrders)
+	return result, nil
+}
+
 // syncEntities is a shared workflow between user and order synchronisation. The comment explains
 // the "activity" like flow so non-Go readers can trace the steps.
 //
@@ -239,47 +374,6 @@ func (s *Server) syncSite(ctx context.Context, site RegisteredSite, page int, st
 //     signals there are no additional pages.
 //  3. Persist each entity as an event while pulling the latest attribution data from the event store.
 //  4. Aggregate stats (inserted/skipped counts) and expose them in the HTTP response.
-func (s *Server) syncEntities(w http.ResponseWriter, r *http.Request, fetch pagedFetcher) {
-	siteID := chi.URLParam(r, "siteID")
-	site, err := s.store.GetSite(r.Context(), siteID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			writeError(w, http.StatusNotFound, "site not registered")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "load site: %v", err)
-		return
-	}
-
-	page := parseIntDefault(r.URL.Query().Get("page"), 1)
-	start, end, err := parseDateRange(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	ctx := r.Context()
-	summary, err := s.syncSite(ctx, site, page, start, end, fetch)
-	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			writeError(w, http.StatusGatewayTimeout, "sync canceled: %v", err)
-			return
-		}
-		writeError(w, http.StatusBadGateway, "fetch remote page: %v", err)
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"site_id": site.SiteID,
-		"synced":  summary,
-		"filters": map[string]any{
-			"start": formatTimePtr(start),
-			"end":   formatTimePtr(end),
-			"page":  page,
-		},
-	})
-}
-
 func (s *Server) persistUsers(ctx context.Context, site RegisteredSite, users []BuilderUser) (int, int, error) {
 	inserted := 0
 	skipped := 0
@@ -370,6 +464,7 @@ func (s *Server) handleRandomEvent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.logger.Info("random attribution event inserted", "site_id", event.SiteID, "user_id", event.UserID, "event_name", event.EventName)
 	writeJSON(w, http.StatusCreated, event)
 }
 
@@ -427,6 +522,7 @@ func (s *Server) handleManualEvent(w http.ResponseWriter, r *http.Request) {
 	if !inserted {
 		status = http.StatusOK
 	}
+	s.logger.Info("manual event processed", "site_id", event.SiteID, "user_id", event.UserID, "event_name", event.EventName, "dedupe_key", event.DedupeKey, "inserted", inserted)
 	writeJSON(w, status, map[string]any{
 		"inserted": inserted,
 		"event":    event,
@@ -442,6 +538,7 @@ func (s *Server) handleListEvents(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "list events: %v", err)
 		return
 	}
+	s.logger.Info("events listed", "site_id", siteID, "user_id", userID, "count", len(events))
 	writeJSON(w, http.StatusOK, map[string]any{
 		"events": events,
 		"count":  len(events),
@@ -527,7 +624,7 @@ func (s *Server) SyncAllSitesOnce(ctx context.Context) {
 	sites, err := s.store.ListSites(ctx)
 	if err != nil {
 		if !errors.Is(err, context.Canceled) {
-			log.Printf("[autosync] list sites failed: %v", err)
+			s.logger.Error("autosync list sites failed", "error", err)
 		}
 		return
 	}
@@ -538,9 +635,9 @@ func (s *Server) SyncAllSitesOnce(ctx context.Context) {
 		siteCtx, cancel := context.WithTimeout(ctx, autoSyncPerSiteTimeout)
 		usersSummary, err := s.SyncUsersForSite(siteCtx, site)
 		if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			log.Printf("[autosync] sync users site=%s failed: %v", site.SiteID, err)
+			s.logger.Error("autosync users failed", "site_id", site.SiteID, "error", err)
 		} else if err == nil {
-			log.Printf("[autosync] synced users site=%s inserted=%d skipped=%d pages=%d total=%d", site.SiteID, usersSummary.Inserted, usersSummary.Skipped, usersSummary.Pages, usersSummary.Total)
+			s.logger.Info("autosync users completed", "site_id", site.SiteID, "inserted", usersSummary.Inserted, "skipped", usersSummary.Skipped, "pages", usersSummary.Pages, "total", usersSummary.Total)
 		}
 		cancel()
 
@@ -550,9 +647,9 @@ func (s *Server) SyncAllSitesOnce(ctx context.Context) {
 		orderCtx, cancelOrders := context.WithTimeout(ctx, autoSyncPerSiteTimeout)
 		ordersSummary, err := s.SyncOrdersForSite(orderCtx, site)
 		if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			log.Printf("[autosync] sync orders site=%s failed: %v", site.SiteID, err)
+			s.logger.Error("autosync orders failed", "site_id", site.SiteID, "error", err)
 		} else if err == nil {
-			log.Printf("[autosync] synced orders site=%s inserted=%d skipped=%d pages=%d total=%d", site.SiteID, ordersSummary.Inserted, ordersSummary.Skipped, ordersSummary.Pages, ordersSummary.Total)
+			s.logger.Info("autosync orders completed", "site_id", site.SiteID, "inserted", ordersSummary.Inserted, "skipped", ordersSummary.Skipped, "pages", ordersSummary.Pages, "total", ordersSummary.Total)
 		}
 		cancelOrders()
 	}
@@ -561,18 +658,47 @@ func (s *Server) SyncAllSitesOnce(ctx context.Context) {
 // StartAutoSync begins a ticker-driven loop that fetches builder data every interval.
 func (s *Server) StartAutoSync(ctx context.Context, interval time.Duration) {
 	go func() {
-		log.Printf("[autosync] background sync started (interval=%s)", interval)
-		s.SyncAllSitesOnce(ctx)
+		s.logger.Info("autosync loop started", "interval", interval)
+		s.dispatchAllSites(ctx, "autosync-initial")
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ctx.Done():
-				log.Printf("[autosync] background sync stopped: %v", ctx.Err())
+				s.logger.Info("autosync loop stopped", "reason", ctx.Err())
 				return
 			case <-ticker.C:
-				s.SyncAllSitesOnce(ctx)
+				s.dispatchAllSites(ctx, "autosync-interval")
 			}
 		}
 	}()
+}
+
+func (s *Server) dispatchAllSites(ctx context.Context, reason string) {
+	if s.orchestrator == nil {
+		s.logger.Warn("autosync orchestrator not available; skipping dispatch")
+		return
+	}
+	sites, err := s.store.ListSites(ctx)
+	if err != nil {
+		s.logger.Error("autosync dispatch list sites failed", "error", err)
+		return
+	}
+	for _, site := range sites {
+		if err := ctx.Err(); err != nil {
+			return
+		}
+		id, err := s.orchestrator.RunSyncAsync(ctx, SyncWorkflowInput{
+			SiteID:        site.SiteID,
+			IncludeUsers:  true,
+			IncludeOrders: true,
+			Page:          1,
+			Reason:        reason,
+		})
+		if err != nil {
+			s.logger.Error("autosync dispatch failed", "site_id", site.SiteID, "error", err)
+			continue
+		}
+		s.logger.Info("autosync dispatched workflow", "site_id", site.SiteID, "workflow_id", id, "reason", reason)
+	}
 }

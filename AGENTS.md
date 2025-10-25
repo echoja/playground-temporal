@@ -20,13 +20,14 @@ This playground exposes two cooperating Go services that simulate syncing data f
   - `POST /worker/events/random` seeds attribution events so future syncs can reuse UTM data.
   - `POST /worker/events` and `GET /worker/events` allow manual inspection and insertion.
 - **Deduplication Logic**: Each event writes a `dedupe_key` (`signup:<site>:<user>` or `order:<site>:<order>`) and relies on `ON CONFLICT DO NOTHING` to keep the event log append-only without duplicates.
-- **Background Sync**: A ticker inside `cmd/worker` automatically runs user and order syncs for every registered site every 10 minutes (also runs immediately on startup).
+- **Temporal Orchestration**: All syncs (manual and scheduled) run through a Temporal workflow (`worker.sync.site`). The worker binary includes an embedded Temporal worker listening on the `worker-sync-task-queue` task queue and logs every API call plus workflow lifecycle events.
+- **Background Sync**: A ticker inside `cmd/worker` kicks off the Temporal workflow for each registered site every 10 minutes (and once on startup).
 
 ## Running Locally
 1. Start the builder API: `go run ./cmd/builder --db builder.db --addr :8081`
-2. Start the worker API: `go run ./cmd/worker --db events.db --addr :8082`
-3. Create a site and register it with the worker, then trigger syncs. All endpoints are JSON-friendly for Postman or curl.
-4. For auto-reload during development, install [`air`](https://github.com/cosmtrek/air) and run `air` (defaults to the worker). Use `AIR_TARGET=builder air` to watch the builder service instead.
+2. Start the worker API: `go run ./cmd/worker --db events.db --addr :8082 --temporal 127.0.0.1:7233` (omit `--temporal` to use the default Temporal address). Ensure a Temporal server is running locally.
+3. Create a site and register it with the worker, then trigger syncs. All endpoints are JSON-friendly for Postman or curl. Responses will include `workflow_id`/`run_id` when a workflow is executed.
+4. For auto-reload during development, install [`air`](https://github.com/cosmtrek/air) and run `air` (defaults to the worker with build artifacts in `tmp/worker`). Use `AIR_TARGET=builder AIR_TMP=tmp/builder air` to watch the builder service in a second terminal.
 
 ## Event Flow Summary
 1. Builder seeds users/orders (single source of truth for commerce data).

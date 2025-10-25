@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -16,12 +17,13 @@ import (
 
 // Server exposes HTTP APIs that mimic an external e-commerce site builder.
 type Server struct {
-	store *Store
+	store  *Store
+	logger *slog.Logger
 }
 
 // NewServer builds a server backed by the provided store.
-func NewServer(store *Store) *Server {
-	return &Server{store: store}
+func NewServer(store *Store, logger *slog.Logger) *Server {
+	return &Server{store: store, logger: logger}
 }
 
 // Router wires all builder routes under a single chi router.
@@ -63,11 +65,13 @@ func (s *Server) handleCreateSite(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid json: %v", err)
 		return
 	}
-	site, err := s.store.CreateSite(r.Context(), payload.Name)
+	ctx := r.Context()
+	site, err := s.store.CreateSite(ctx, payload.Name)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.logger.Info("builder site created", "site_id", site.ID, "name", site.Name)
 	writeJSON(w, http.StatusCreated, MarshalSite(site, true))
 }
 
@@ -102,6 +106,7 @@ func (s *Server) handleDeleteSite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+	s.logger.Info("builder site deleted", "site_id", siteID)
 }
 
 func (s *Server) handleRandomUser(w http.ResponseWriter, r *http.Request) {
@@ -111,6 +116,7 @@ func (s *Server) handleRandomUser(w http.ResponseWriter, r *http.Request) {
 		handleNotFound(w, err)
 		return
 	}
+	s.logger.Info("builder random user created", "site_id", siteID, "user_id", user.ID)
 	writeJSON(w, http.StatusCreated, MarshalUser(user))
 }
 
@@ -121,6 +127,7 @@ func (s *Server) handleRandomOrder(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.logger.Info("builder random order created", "site_id", siteID, "order_id", order.ID, "user_id", order.UserID)
 	writeJSON(w, http.StatusCreated, MarshalOrder(order))
 }
 

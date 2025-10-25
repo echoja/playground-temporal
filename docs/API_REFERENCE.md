@@ -124,7 +124,7 @@ This document describes every test-only HTTP endpoint exposed by the builder and
 ---
 
 ## Worker Service
-- **Auto Sync**: Starting the worker binary also launches a background job that syncs users and orders for every registered site every 10 minutes (first run happens immediately). These APIs remain available for manual triggering or selective syncs.
+- **Auto Sync**: Starting the worker binary launches a Temporal workflow dispatch every 10 minutes (first run happens immediately) so each registered site syncs via the same Temporal pipeline. The HTTP APIs below trigger the same workflow, wait for completion, and return rich workflow metadata.
 
 ### Health Check
 - **GET** `/healthz`
@@ -177,6 +177,10 @@ This document describes every test-only HTTP endpoint exposed by the builder and
   ```json
   {
     "site_id": "2f3...",
+    "workflow_id": "sync-2f3-1698240000000",
+    "run_id": "5f4f...",
+    "started_at": "2025-10-25T09:20:00.123Z",
+    "completed_at": "2025-10-25T09:20:01.987Z",
     "synced": {
       "inserted": 10,
       "skipped": 0,
@@ -193,7 +197,7 @@ This document describes every test-only HTTP endpoint exposed by the builder and
 
 #### Sync Orders
 - **POST** `/worker/sites/{siteID}/sync/orders`
-- Response identical in shape to the user sync.
+- Response identical in shape to the user sync, except `"synced"` describes `order_created` events.
 
 ### Event Utilities
 
