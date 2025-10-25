@@ -1,9 +1,10 @@
 root = "."
-tmp_dir = "tmp"
+tmp_dir = "{{.Env.AIR_TMP}}"
 
-# Default to syncing the worker service; override AIR_TARGET=builder to watch the builder instead.
+# Default env: watch the worker and isolate its build artifacts under tmp/worker.
 env = [
-  "AIR_TARGET=worker"
+  "AIR_TARGET=worker",
+  "AIR_TMP=tmp/worker"
 ]
 
 shell = "bash"
