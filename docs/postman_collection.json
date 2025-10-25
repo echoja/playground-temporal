@@ -1,0 +1,232 @@
+{
+  "info": {
+    "name": "Ecommerce Sync Playground",
+    "description": "Postman collection covering all test APIs for the builder and worker services.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "builder_base", "value": "http://localhost:8081", "type": "string" },
+    { "key": "worker_base", "value": "http://localhost:8080", "type": "string" },
+    { "key": "site_id", "value": "", "type": "string" },
+    { "key": "access_key", "value": "", "type": "string" },
+    { "key": "user_id", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Builder Service",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{builder_base}}/healthz"
+            }
+          }
+        },
+        {
+          "name": "Create Site",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"My Demo Store\"\n}"
+            },
+            "url": {
+              "raw": "{{builder_base}}/builder/sites"
+            }
+          }
+        },
+        {
+          "name": "List Sites",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{builder_base}}/builder/sites"
+            }
+          }
+        },
+        {
+          "name": "Get Site",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{builder_base}}/builder/sites/{{site_id}}"
+            }
+          }
+        },
+        {
+          "name": "Delete Site",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{builder_base}}/builder/sites/{{site_id}}"
+            }
+          }
+        },
+        {
+          "name": "Seed Random User",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{builder_base}}/builder/sites/{{site_id}}/random-user"
+            }
+          }
+        },
+        {
+          "name": "Seed Random Order",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{builder_base}}/builder/sites/{{site_id}}/random-order"
+            }
+          }
+        },
+        {
+          "name": "Builder Site Profile",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "X-Access-Key", "value": "{{access_key}}" } ],
+            "url": {
+              "raw": "{{builder_base}}/builder/api/sites/{{site_id}}"
+            }
+          }
+        },
+        {
+          "name": "List Builder Users",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "X-Access-Key", "value": "{{access_key}}" } ],
+            "url": {
+              "raw": "{{builder_base}}/builder/api/sites/{{site_id}}/users?page=1&page_size=10"
+            }
+          }
+        },
+        {
+          "name": "List Builder Orders",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "X-Access-Key", "value": "{{access_key}}" } ],
+            "url": {
+              "raw": "{{builder_base}}/builder/api/sites/{{site_id}}/orders?page=1&page_size=10"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Worker Service",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{worker_base}}/healthz"
+            }
+          }
+        },
+        {
+          "name": "Register Site",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"site_id\": \"{{site_id}}\",\n  \"access_key\": \"{{access_key}}\",\n  \"builder_base_url\": \"{{builder_base}}\"\n}"
+            },
+            "url": {
+              "raw": "{{worker_base}}/worker/sites"
+            }
+          }
+        },
+        {
+          "name": "List Registered Sites",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{worker_base}}/worker/sites"
+            }
+          }
+        },
+        {
+          "name": "Unregister Site",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{worker_base}}/worker/sites/{{site_id}}"
+            }
+          }
+        },
+        {
+          "name": "Sync Users",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{worker_base}}/worker/sites/{{site_id}}/sync/users?page=1"
+            }
+          }
+        },
+        {
+          "name": "Sync Orders",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{worker_base}}/worker/sites/{{site_id}}/sync/orders?page=1"
+            }
+          }
+        },
+        {
+          "name": "Seed Random Event",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"site_id\": \"{{site_id}}\",\n  \"user_id\": \"{{user_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{worker_base}}/worker/events/random"
+            }
+          }
+        },
+        {
+          "name": "Insert Manual Event",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"site_id\": \"{{site_id}}\",\n  \"timestamp\": \"2025-10-25T09:10:00Z\",\n  \"user_id\": \"{{user_id}}\",\n  \"event_name\": \"custom_event\",\n  \"utm_source\": \"newsletter\",\n  \"properties\": {\n    \"foo\": \"bar\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{worker_base}}/worker/events"
+            }
+          }
+        },
+        {
+          "name": "List Events",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{worker_base}}/worker/events?site_id={{site_id}}&limit=50"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
