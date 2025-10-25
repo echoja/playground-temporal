@@ -1,6 +1,6 @@
 # API Reference
 
-This document describes every test-only HTTP endpoint exposed by the builder and worker services. All examples assume the builder is listening on `http://localhost:8081` and the worker on `http://localhost:8080`.
+This document describes every test-only HTTP endpoint exposed by the builder and worker services. All examples assume the builder is listening on `http://localhost:8081` and the worker on `http://localhost:8082`.
 
 ## Common Conventions
 - All endpoints speak JSON and expect the `Content-Type: application/json` header on requests with bodies.
@@ -124,6 +124,7 @@ This document describes every test-only HTTP endpoint exposed by the builder and
 ---
 
 ## Worker Service
+- **Auto Sync**: Starting the worker binary also launches a background job that syncs users and orders for every registered site every 10 minutes (first run happens immediately). These APIs remain available for manual triggering or selective syncs.
 
 ### Health Check
 - **GET** `/healthz`

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -24,7 +25,10 @@ type Server struct {
 	builderClient *BuilderClient
 }
 
-const maxPageSize = 10
+const (
+	maxPageSize            = 10
+	autoSyncPerSiteTimeout = 2 * time.Minute
+)
 
 // NewServer creates a worker server with the required collaborators wired in.
 func NewServer(store *Store, client *BuilderClient) *Server {
@@ -142,45 +146,11 @@ func (s *Server) handleListSites(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSyncUsers(w http.ResponseWriter, r *http.Request) {
-	s.syncEntities(w, r, func(ctx context.Context, site RegisteredSite, page int, start, end *time.Time) (pagedResult, error) {
-		resp, err := s.builderClient.FetchUsers(ctx, site.BuilderBaseURL, site.SiteID, site.AccessKey, page, maxPageSize, start, end)
-		if err != nil {
-			return pagedResult{}, err
-		}
-		inserted, skipped, err := s.persistUsers(ctx, site, resp.Users)
-		if err != nil {
-			return pagedResult{}, err
-		}
-		return pagedResult{
-			page:     resp.Page,
-			total:    resp.Total,
-			hasMore:  resp.HasMore,
-			nextPage: resp.NextPage,
-			inserted: inserted,
-			skipped:  skipped,
-		}, nil
-	})
+	s.syncEntities(w, r, s.fetchUsersPage)
 }
 
 func (s *Server) handleSyncOrders(w http.ResponseWriter, r *http.Request) {
-	s.syncEntities(w, r, func(ctx context.Context, site RegisteredSite, page int, start, end *time.Time) (pagedResult, error) {
-		resp, err := s.builderClient.FetchOrders(ctx, site.BuilderBaseURL, site.SiteID, site.AccessKey, page, maxPageSize, start, end)
-		if err != nil {
-			return pagedResult{}, err
-		}
-		inserted, skipped, err := s.persistOrders(ctx, site, resp.Orders)
-		if err != nil {
-			return pagedResult{}, err
-		}
-		return pagedResult{
-			page:     resp.Page,
-			total:    resp.Total,
-			hasMore:  resp.HasMore,
-			nextPage: resp.NextPage,
-			inserted: inserted,
-			skipped:  skipped,
-		}, nil
-	})
+	s.syncEntities(w, r, s.fetchOrdersPage)
 }
 
 type pagedFetcher func(ctx context.Context, site RegisteredSite, page int, start, end *time.Time) (pagedResult, error)
@@ -192,6 +162,73 @@ type pagedResult struct {
 	nextPage *int
 	inserted int
 	skipped  int
+}
+
+func (s *Server) fetchUsersPage(ctx context.Context, site RegisteredSite, page int, start, end *time.Time) (pagedResult, error) {
+	resp, err := s.builderClient.FetchUsers(ctx, site.BuilderBaseURL, site.SiteID, site.AccessKey, page, maxPageSize, start, end)
+	if err != nil {
+		return pagedResult{}, err
+	}
+	inserted, skipped, err := s.persistUsers(ctx, site, resp.Users)
+	if err != nil {
+		return pagedResult{}, err
+	}
+	return pagedResult{
+		page:     resp.Page,
+		total:    resp.Total,
+		hasMore:  resp.HasMore,
+		nextPage: resp.NextPage,
+		inserted: inserted,
+		skipped:  skipped,
+	}, nil
+}
+
+func (s *Server) fetchOrdersPage(ctx context.Context, site RegisteredSite, page int, start, end *time.Time) (pagedResult, error) {
+	resp, err := s.builderClient.FetchOrders(ctx, site.BuilderBaseURL, site.SiteID, site.AccessKey, page, maxPageSize, start, end)
+	if err != nil {
+		return pagedResult{}, err
+	}
+	inserted, skipped, err := s.persistOrders(ctx, site, resp.Orders)
+	if err != nil {
+		return pagedResult{}, err
+	}
+	return pagedResult{
+		page:     resp.Page,
+		total:    resp.Total,
+		hasMore:  resp.HasMore,
+		nextPage: resp.NextPage,
+		inserted: inserted,
+		skipped:  skipped,
+	}, nil
+}
+
+func (s *Server) syncSite(ctx context.Context, site RegisteredSite, page int, start, end *time.Time, fetch pagedFetcher) (SyncSummary, error) {
+	summary := SyncSummary{}
+	currentPage := page
+	for {
+		if err := ctx.Err(); err != nil {
+			return summary, err
+		}
+		res, err := fetch(ctx, site, currentPage, start, end)
+		if err != nil {
+			return summary, err
+		}
+		summary.Inserted += res.inserted
+		summary.Skipped += res.skipped
+		summary.Pages++
+		if res.total > summary.Total {
+			summary.Total = res.total
+		}
+		if !res.hasMore {
+			break
+		}
+		if res.nextPage != nil {
+			currentPage = *res.nextPage
+		} else {
+			currentPage++
+		}
+	}
+	return summary, nil
 }
 
 // syncEntities is a shared workflow between user and order synchronisation. The comment explains
@@ -221,29 +258,15 @@ func (s *Server) syncEntities(w http.ResponseWriter, r *http.Request, fetch page
 		return
 	}
 
-	summary := SyncSummary{}
-	currentPage := page
-
 	ctx := r.Context()
-	for {
-		res, err := fetch(ctx, site, currentPage, start, end)
-		if err != nil {
-			writeError(w, http.StatusBadGateway, "fetch remote page: %v", err)
+	summary, err := s.syncSite(ctx, site, page, start, end, fetch)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			writeError(w, http.StatusGatewayTimeout, "sync canceled: %v", err)
 			return
 		}
-		summary.Inserted += res.inserted
-		summary.Skipped += res.skipped
-		summary.Pages++
-		summary.Total = res.total
-
-		if !res.hasMore {
-			break
-		}
-		if res.nextPage != nil {
-			currentPage = *res.nextPage
-		} else {
-			currentPage++
-		}
+		writeError(w, http.StatusBadGateway, "fetch remote page: %v", err)
+		return
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -487,4 +510,69 @@ func writeError(w http.ResponseWriter, status int, format string, args ...any) {
 			"status":  status,
 		},
 	})
+}
+
+// SyncUsersForSite executes a full pagination-based sync for the given site.
+func (s *Server) SyncUsersForSite(ctx context.Context, site RegisteredSite) (SyncSummary, error) {
+	return s.syncSite(ctx, site, 1, nil, nil, s.fetchUsersPage)
+}
+
+// SyncOrdersForSite executes a full pagination-based sync for the given site.
+func (s *Server) SyncOrdersForSite(ctx context.Context, site RegisteredSite) (SyncSummary, error) {
+	return s.syncSite(ctx, site, 1, nil, nil, s.fetchOrdersPage)
+}
+
+// SyncAllSitesOnce loops through every registered site and pulls both users and orders.
+func (s *Server) SyncAllSitesOnce(ctx context.Context) {
+	sites, err := s.store.ListSites(ctx)
+	if err != nil {
+		if !errors.Is(err, context.Canceled) {
+			log.Printf("[autosync] list sites failed: %v", err)
+		}
+		return
+	}
+	for _, site := range sites {
+		if err := ctx.Err(); err != nil {
+			return
+		}
+		siteCtx, cancel := context.WithTimeout(ctx, autoSyncPerSiteTimeout)
+		usersSummary, err := s.SyncUsersForSite(siteCtx, site)
+		if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			log.Printf("[autosync] sync users site=%s failed: %v", site.SiteID, err)
+		} else if err == nil {
+			log.Printf("[autosync] synced users site=%s inserted=%d skipped=%d pages=%d total=%d", site.SiteID, usersSummary.Inserted, usersSummary.Skipped, usersSummary.Pages, usersSummary.Total)
+		}
+		cancel()
+
+		if err := ctx.Err(); err != nil {
+			return
+		}
+		orderCtx, cancelOrders := context.WithTimeout(ctx, autoSyncPerSiteTimeout)
+		ordersSummary, err := s.SyncOrdersForSite(orderCtx, site)
+		if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			log.Printf("[autosync] sync orders site=%s failed: %v", site.SiteID, err)
+		} else if err == nil {
+			log.Printf("[autosync] synced orders site=%s inserted=%d skipped=%d pages=%d total=%d", site.SiteID, ordersSummary.Inserted, ordersSummary.Skipped, ordersSummary.Pages, ordersSummary.Total)
+		}
+		cancelOrders()
+	}
+}
+
+// StartAutoSync begins a ticker-driven loop that fetches builder data every interval.
+func (s *Server) StartAutoSync(ctx context.Context, interval time.Duration) {
+	go func() {
+		log.Printf("[autosync] background sync started (interval=%s)", interval)
+		s.SyncAllSitesOnce(ctx)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				log.Printf("[autosync] background sync stopped: %v", ctx.Err())
+				return
+			case <-ticker.C:
+				s.SyncAllSitesOnce(ctx)
+			}
+		}
+	}()
 }

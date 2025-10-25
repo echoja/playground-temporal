@@ -20,6 +20,7 @@ This playground exposes two cooperating Go services that simulate syncing data f
   - `POST /worker/events/random` seeds attribution events so future syncs can reuse UTM data.
   - `POST /worker/events` and `GET /worker/events` allow manual inspection and insertion.
 - **Deduplication Logic**: Each event writes a `dedupe_key` (`signup:<site>:<user>` or `order:<site>:<order>`) and relies on `ON CONFLICT DO NOTHING` to keep the event log append-only without duplicates.
+- **Background Sync**: A ticker inside `cmd/worker` automatically runs user and order syncs for every registered site every 10 minutes (also runs immediately on startup).
 
 ## Running Locally
 1. Start the builder API: `go run ./cmd/builder --db builder.db --addr :8081`
