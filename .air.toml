@@ -1,0 +1,29 @@
+root = "."
+tmp_dir = "tmp"
+
+# Default to syncing the worker service; override AIR_TARGET=builder to watch the builder instead.
+env = [
+  "AIR_TARGET=worker"
+]
+
+shell = "bash"
+shell_args = ["-lc"]
+
+[build]
+  cmd = "go build -o ./tmp/app ./cmd/${AIR_TARGET:-worker}"
+  bin = "tmp/app"
+  include_ext = ["go", "tpl", "tmpl", "html", "sql"]
+  exclude_dir = ["tmp", "vendor", "docs"]
+  exclude_file = ["*_test.go"]
+
+[log]
+  time = true
+  color = true
+
+[runner]
+  cmd = "./tmp/app"
+  dir = "."
+  args = []
+
+[misc]
+  clean_on_exit = true

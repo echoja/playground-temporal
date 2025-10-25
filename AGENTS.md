@@ -26,6 +26,7 @@ This playground exposes two cooperating Go services that simulate syncing data f
 1. Start the builder API: `go run ./cmd/builder --db builder.db --addr :8081`
 2. Start the worker API: `go run ./cmd/worker --db events.db --addr :8082`
 3. Create a site and register it with the worker, then trigger syncs. All endpoints are JSON-friendly for Postman or curl.
+4. For auto-reload during development, install [`air`](https://github.com/cosmtrek/air) and run `air` (defaults to the worker). Use `AIR_TARGET=builder air` to watch the builder service instead.
 
 ## Event Flow Summary
 1. Builder seeds users/orders (single source of truth for commerce data).

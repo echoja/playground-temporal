@@ -17,3 +17,4 @@ coverage.out
 vendor/
 .cache/
 .tmp/
+tmp/
