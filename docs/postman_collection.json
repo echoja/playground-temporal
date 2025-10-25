@@ -1,12 +1,13 @@
 {
   "info": {
-    "name": "Ecommerce Sync Playground",
-    "description": "Postman collection covering all test APIs for the builder and worker services.",
+    "_postman_id": "f3b6cb1d-4d2e-4a0c-986e-4ea8a2a4e7b1",
+    "name": "Temporal Ecommerce Sync Playground",
+    "description": "Comprehensive collection for the Temporal mock builder and worker APIs.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     { "key": "builder_base", "value": "http://localhost:8081", "type": "string" },
-    { "key": "worker_base", "value": "http://localhost:8080", "type": "string" },
+    { "key": "worker_base", "value": "http://localhost:8082", "type": "string" },
     { "key": "site_id", "value": "", "type": "string" },
     { "key": "access_key", "value": "", "type": "string" },
     { "key": "user_id", "value": "", "type": "string" }
@@ -20,23 +21,21 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": {
-              "raw": "{{builder_base}}/healthz"
-            }
+            "url": "{{builder_base}}/healthz"
           }
         },
         {
           "name": "Create Site",
           "request": {
             "method": "POST",
-            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"My Demo Store\"\n}"
             },
-            "url": {
-              "raw": "{{builder_base}}/builder/sites"
-            }
+            "url": "{{builder_base}}/builder/sites"
           }
         },
         {
@@ -44,9 +43,7 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": {
-              "raw": "{{builder_base}}/builder/sites"
-            }
+            "url": "{{builder_base}}/builder/sites"
           }
         },
         {
@@ -54,9 +51,7 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": {
-              "raw": "{{builder_base}}/builder/sites/{{site_id}}"
-            }
+            "url": "{{builder_base}}/builder/sites/{{site_id}}"
           }
         },
         {
@@ -64,9 +59,7 @@
           "request": {
             "method": "DELETE",
             "header": [],
-            "url": {
-              "raw": "{{builder_base}}/builder/sites/{{site_id}}"
-            }
+            "url": "{{builder_base}}/builder/sites/{{site_id}}"
           }
         },
         {
@@ -74,9 +67,7 @@
           "request": {
             "method": "POST",
             "header": [],
-            "url": {
-              "raw": "{{builder_base}}/builder/sites/{{site_id}}/random-user"
-            }
+            "url": "{{builder_base}}/builder/sites/{{site_id}}/random-user"
           }
         },
         {
@@ -84,39 +75,37 @@
           "request": {
             "method": "POST",
             "header": [],
-            "url": {
-              "raw": "{{builder_base}}/builder/sites/{{site_id}}/random-order"
-            }
+            "url": "{{builder_base}}/builder/sites/{{site_id}}/random-order"
           }
         },
         {
           "name": "Builder Site Profile",
           "request": {
             "method": "GET",
-            "header": [ { "key": "X-Access-Key", "value": "{{access_key}}" } ],
-            "url": {
-              "raw": "{{builder_base}}/builder/api/sites/{{site_id}}"
-            }
+            "header": [
+              { "key": "X-Access-Key", "value": "{{access_key}}" }
+            ],
+            "url": "{{builder_base}}/builder/api/sites/{{site_id}}"
           }
         },
         {
           "name": "List Builder Users",
           "request": {
             "method": "GET",
-            "header": [ { "key": "X-Access-Key", "value": "{{access_key}}" } ],
-            "url": {
-              "raw": "{{builder_base}}/builder/api/sites/{{site_id}}/users?page=1&page_size=10"
-            }
+            "header": [
+              { "key": "X-Access-Key", "value": "{{access_key}}" }
+            ],
+            "url": "{{builder_base}}/builder/api/sites/{{site_id}}/users?page=1&page_size=10"
           }
         },
         {
           "name": "List Builder Orders",
           "request": {
             "method": "GET",
-            "header": [ { "key": "X-Access-Key", "value": "{{access_key}}" } ],
-            "url": {
-              "raw": "{{builder_base}}/builder/api/sites/{{site_id}}/orders?page=1&page_size=10"
-            }
+            "header": [
+              { "key": "X-Access-Key", "value": "{{access_key}}" }
+            ],
+            "url": "{{builder_base}}/builder/api/sites/{{site_id}}/orders?page=1&page_size=10"
           }
         }
       ]
@@ -129,23 +118,21 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": {
-              "raw": "{{worker_base}}/healthz"
-            }
+            "url": "{{worker_base}}/healthz"
           }
         },
         {
           "name": "Register Site",
           "request": {
             "method": "POST",
-            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"site_id\": \"{{site_id}}\",\n  \"access_key\": \"{{access_key}}\",\n  \"builder_base_url\": \"{{builder_base}}\"\n}"
             },
-            "url": {
-              "raw": "{{worker_base}}/worker/sites"
-            }
+            "url": "{{worker_base}}/worker/sites"
           }
         },
         {
@@ -153,9 +140,7 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": {
-              "raw": "{{worker_base}}/worker/sites"
-            }
+            "url": "{{worker_base}}/worker/sites"
           }
         },
         {
@@ -163,9 +148,7 @@
           "request": {
             "method": "DELETE",
             "header": [],
-            "url": {
-              "raw": "{{worker_base}}/worker/sites/{{site_id}}"
-            }
+            "url": "{{worker_base}}/worker/sites/{{site_id}}"
           }
         },
         {
@@ -173,9 +156,7 @@
           "request": {
             "method": "POST",
             "header": [],
-            "url": {
-              "raw": "{{worker_base}}/worker/sites/{{site_id}}/sync/users?page=1"
-            }
+            "url": "{{worker_base}}/worker/sites/{{site_id}}/sync/users?page=1"
           }
         },
         {
@@ -183,37 +164,35 @@
           "request": {
             "method": "POST",
             "header": [],
-            "url": {
-              "raw": "{{worker_base}}/worker/sites/{{site_id}}/sync/orders?page=1"
-            }
+            "url": "{{worker_base}}/worker/sites/{{site_id}}/sync/orders?page=1"
           }
         },
         {
           "name": "Seed Random Event",
           "request": {
             "method": "POST",
-            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"site_id\": \"{{site_id}}\",\n  \"user_id\": \"{{user_id}}\"\n}"
             },
-            "url": {
-              "raw": "{{worker_base}}/worker/events/random"
-            }
+            "url": "{{worker_base}}/worker/events/random"
           }
         },
         {
           "name": "Insert Manual Event",
           "request": {
             "method": "POST",
-            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"site_id\": \"{{site_id}}\",\n  \"timestamp\": \"2025-10-25T09:10:00Z\",\n  \"user_id\": \"{{user_id}}\",\n  \"event_name\": \"custom_event\",\n  \"utm_source\": \"newsletter\",\n  \"properties\": {\n    \"foo\": \"bar\"\n  }\n}"
             },
-            "url": {
-              "raw": "{{worker_base}}/worker/events"
-            }
+            "url": "{{worker_base}}/worker/events"
           }
         },
         {
@@ -221,9 +200,7 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": {
-              "raw": "{{worker_base}}/worker/events?site_id={{site_id}}&limit=50"
-            }
+            "url": "{{worker_base}}/worker/events?site_id={{site_id}}&limit=50"
           }
         }
       ]
