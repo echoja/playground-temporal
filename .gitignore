@@ -1,2 +1,19 @@
 .idea
 .pki
+.DS_Store
+
+# SQLite databases created by the builder/worker services
+*.db
+
+# Go build artifacts
+bin/
+*.exe
+*.exe~
+*.out
+*.test
+coverage.out
+
+# Dependency / tooling caches
+vendor/
+.cache/
+.tmp/
