@@ -13,7 +13,7 @@ on:
 jobs:
   create-tag:
     name: "Create a release"
-    runs-on: ubuntu-latest
+    runs-on: echoja-playground-temporal-linux
 
     defaults:
       run:
@@ -28,7 +28,7 @@ jobs:
           private-key: ${{ secrets.TEMPORAL_CICD_PRIVATE_KEY }}
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           persist-credentials: true
           token: ${{ steps.generate_token.outputs.token }}
@@ -90,3 +90,5 @@ jobs:
           EOF
 
           cat $TEMPFILE >> $GITHUB_STEP_SUMMARY
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    timeout-minutes: 20
