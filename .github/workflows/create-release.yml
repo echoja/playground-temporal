@@ -9,6 +9,14 @@ on:
       admintools_tag:
         description: "Admin tools version (1.23.4-tctl-1.0-cli-1.0)"
         required: true
+      dry_run:
+        description: Validate locally without changing versions, tags or releases
+        type: boolean
+        required: false
+        default: false
+  pull_request:
+    branches:
+      - main
 
 jobs:
   create-tag:
@@ -90,5 +98,16 @@ jobs:
           EOF
 
           cat $TEMPFILE >> $GITHUB_STEP_SUMMARY
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'workflow_dispatch' && !inputs.dry_run
     timeout-minutes: 20
+  validate:
+    if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'workflow_dispatch' || inputs.dry_run)
+    runs-on: echoja-playground-temporal-linux
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: go test ./...
+      - run: docker compose config --quiet
