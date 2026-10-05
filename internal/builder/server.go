@@ -68,7 +68,7 @@ func (s *Server) handleCreateSite(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	site, err := s.store.CreateSite(ctx, payload.Name)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, http.StatusBadRequest, "%s", err.Error())
 		return
 	}
 	s.logger.Info("builder site created", "site_id", site.ID, "name", site.Name)
@@ -124,7 +124,7 @@ func (s *Server) handleRandomOrder(w http.ResponseWriter, r *http.Request) {
 	siteID := chi.URLParam(r, "siteID")
 	order, err := s.store.CreateRandomOrder(r.Context(), siteID)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, http.StatusBadRequest, "%s", err.Error())
 		return
 	}
 	s.logger.Info("builder random order created", "site_id", siteID, "order_id", order.ID, "user_id", order.UserID)
@@ -142,7 +142,7 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	page, size := parsePaging(r)
 	start, end, err := parseDateRange(r)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, http.StatusBadRequest, "%s", err.Error())
 		return
 	}
 	result, err := s.store.ListUsers(ctx, site.ID, page, size, start, end)
@@ -175,7 +175,7 @@ func (s *Server) handleListOrders(w http.ResponseWriter, r *http.Request) {
 	page, size := parsePaging(r)
 	start, end, err := parseDateRange(r)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, http.StatusBadRequest, "%s", err.Error())
 		return
 	}
 	result, err := s.store.ListOrders(ctx, site.ID, page, size, start, end)
@@ -295,5 +295,5 @@ func handleNotFound(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, "resource not found")
 		return
 	}
-	writeError(w, http.StatusInternalServerError, err.Error())
+	writeError(w, http.StatusInternalServerError, "%s", err.Error())
 }

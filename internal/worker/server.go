@@ -195,7 +195,7 @@ func (s *Server) handleSyncUsers(w http.ResponseWriter, r *http.Request) {
 	page := parseIntDefault(r.URL.Query().Get("page"), 1)
 	start, end, err := parseDateRange(r)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, http.StatusBadRequest, "%s", err.Error())
 		return
 	}
 
@@ -238,7 +238,7 @@ func (s *Server) handleSyncOrders(w http.ResponseWriter, r *http.Request) {
 	page := parseIntDefault(r.URL.Query().Get("page"), 1)
 	start, end, err := parseDateRange(r)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, http.StatusBadRequest, "%s", err.Error())
 		return
 	}
 
@@ -461,7 +461,7 @@ func (s *Server) handleRandomEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	event, err := s.store.InsertRandomAttribution(r.Context(), req)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, http.StatusBadRequest, "%s", err.Error())
 		return
 	}
 	s.logger.Info("random attribution event inserted", "site_id", event.SiteID, "user_id", event.UserID, "event_name", event.EventName)
