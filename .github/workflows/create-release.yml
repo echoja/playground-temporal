@@ -110,4 +110,5 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go test ./...
+      - uses: docker/setup-compose-action@v2
       - run: docker compose config --quiet
